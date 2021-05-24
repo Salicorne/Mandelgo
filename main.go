@@ -36,15 +36,15 @@ var (
 	progress       int
 )
 
-func mandelbrot(x float64, y float64) bool {
+func mandelbrot(x float64, y float64) int {
 	z := complex(0, 0)
 	for iter := 0; iter < max_iter; iter++ {
 		z = z*z + complex(x, y)
 		if cmplx.Abs(z) > 2 {
-			return true
+			return iter
 		}
 	}
-	return false
+	return max_iter
 }
 
 func plot() {
@@ -52,11 +52,7 @@ func plot() {
 		for x := 0; x < width; x++ {
 			var vx float64 = (float64(x)/float64(width))*virt_w + virt_x0
 			var vy float64 = (float64(y)/float64(height))*virt_h + virt_y0
-			if mandelbrot(vx, vy) {
-				goImg.Set(x, y, color.Black)
-			} else {
-				goImg.Set(x, y, color.White)
-			}
+			goImg.Set(x, y, iterToColor(mandelbrot(vx, vy)))
 		}
 		glib.IdleAdd(func() { gtkProgressbar.SetFraction(float64(y) / float64(height)) })
 	}
@@ -94,6 +90,26 @@ func main() {
 	// Setup Gtk Application callback signals
 	application.Connect("activate", func() { onGTKActivate(application) })
 	os.Exit(application.Run(os.Args))
+}
+
+func clamp(v int, min, max uint8) uint8 {
+	if v < int(min) {
+		return min
+	}
+	if v > int(max) {
+		return max
+	}
+	return uint8(v)
+}
+
+func iterToColor(iter int) color.Color {
+	if iter == max_iter {
+		return color.Black
+	}
+	r := clamp(iter*765/max_iter, 0, 255)
+	g := clamp(iter*765/max_iter-255, 0, 255)
+	b := clamp(iter*765/max_iter-255*2, 0, 255)
+	return color.RGBA{R: r, G: g, B: b, A: 255}
 }
 
 func startGTKLoading() bool {
