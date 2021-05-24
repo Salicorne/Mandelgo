@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/png"
 	"log"
+	"math"
 	"math/cmplx"
 	"os"
 	"time"
@@ -16,8 +17,8 @@ import (
 )
 
 const (
-	max_iter    = 1000
-	zoom_factor = 2.
+	max_iter    = 300
+	zoom_factor = 3.
 )
 
 var (
@@ -34,7 +35,24 @@ var (
 	gtkProgressbar *gtk.ProgressBar
 	goImg          *image.RGBA
 	progress       int
+
+	pallet []mColor = []mColor{
+		mColor{R: 0, G: 0, B: 0},
+		mColor{R: 255, G: 0, B: 0},
+		mColor{R: 255, G: 255, B: 0},
+		mColor{R: 0, G: 255, B: 0},
+		mColor{R: 0, G: 255, B: 255},
+		mColor{R: 0, G: 0, B: 255},
+		mColor{R: 255, G: 0, B: 255},
+		mColor{R: 255, G: 255, B: 255},
+	}
 )
+
+type mColor struct {
+	R uint8
+	G uint8
+	B uint8
+}
 
 func mandelbrot(x float64, y float64) int {
 	z := complex(0, 0)
@@ -102,14 +120,27 @@ func clamp(v int, min, max uint8) uint8 {
 	return uint8(v)
 }
 
+func interp(a uint8, b uint8, t float64) uint8 {
+	return uint8((1.0-t)*float64(a) + t*float64(b))
+}
+
 func iterToColor(iter int) color.Color {
 	if iter == max_iter {
 		return color.Black
 	}
-	r := clamp(iter*765/max_iter, 0, 255)
-	g := clamp(iter*765/max_iter-255, 0, 255)
-	b := clamp(iter*765/max_iter-255*2, 0, 255)
-	return color.RGBA{R: r, G: g, B: b, A: 255}
+	coeff := float64(iter) / float64(max_iter)
+	//coeff = math.Sqrt(coeff)
+	wcoeff := coeff * float64(len(pallet)-1)
+	idx := int(math.Floor(wcoeff))
+
+	c1 := pallet[idx]
+	c2 := pallet[idx+1]
+	return color.RGBA{
+		R: interp(c1.R, c2.R, wcoeff-float64(idx)),
+		G: interp(c1.G, c2.G, wcoeff-float64(idx)),
+		B: interp(c1.B, c2.B, wcoeff-float64(idx)),
+		A: 255,
+	}
 }
 
 func startGTKLoading() bool {
@@ -168,7 +199,6 @@ func zoomOutAction(x, y float64) bool {
 	virt_y0 = vy - virt_h/(2.0/zoom_factor)
 	virt_w *= zoom_factor
 	virt_h *= zoom_factor
-
 	go func() {
 		plot()
 		saveGoImgToGTK()
