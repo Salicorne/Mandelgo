@@ -8,6 +8,7 @@ import (
 	"log"
 	"math/cmplx"
 	"os"
+	"time"
 
 	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/glib"
@@ -15,7 +16,8 @@ import (
 )
 
 const (
-	max_iter = 1000
+	max_iter    = 1000
+	zoom_factor = 2.
 )
 
 var (
@@ -26,6 +28,7 @@ var (
 	height  = 900
 	width   = int(virt_w * float64(height) / float64(virt_h))
 
+	appWindow      *gtk.ApplicationWindow
 	gtkSpinner     *gtk.Spinner
 	gtkImg         *gtk.Image
 	gtkProgressbar *gtk.ProgressBar
@@ -55,7 +58,7 @@ func plot() {
 				goImg.Set(x, y, color.White)
 			}
 		}
-		gtkProgressbar.SetFraction(float64(y) / float64(height))
+		glib.IdleAdd(func() { gtkProgressbar.SetFraction(float64(y) / float64(height)) })
 	}
 }
 
@@ -93,15 +96,6 @@ func main() {
 	os.Exit(application.Run(os.Args))
 }
 
-func GTKGenerateBtnAction() {
-	startGTKLoading()
-	go func() {
-		plot()
-		saveGoImgToGTK()
-		glib.IdleAdd(stopGTKLoading)
-	}()
-}
-
 func startGTKLoading() bool {
 	gtkSpinner.Start()
 	gtkProgressbar.SetVisible(true)
@@ -115,10 +109,68 @@ func stopGTKLoading() bool {
 	return false
 }
 
+func resetAction() {
+	startGTKLoading()
+	virt_x0 = -2.0
+	virt_w = 3.0
+	virt_y0 = -1.0
+	virt_h = 2.0
+	go func() {
+		plot()
+		saveGoImgToGTK()
+		glib.IdleAdd(stopGTKLoading)
+	}()
+}
+
+func zoomInAction(x, y float64) bool {
+	startGTKLoading()
+	vx := (x/float64(width))*virt_w + virt_x0
+	vy := (y/float64(height))*virt_h + virt_y0
+	log.Printf("Clicked on (%f, %f)", vx, vy)
+
+	virt_x0 = vx - virt_w/(2.0*zoom_factor)
+	virt_y0 = vy - virt_h/(2.0*zoom_factor)
+	virt_w /= zoom_factor
+	virt_h /= zoom_factor
+
+	go func() {
+		plot()
+		saveGoImgToGTK()
+		glib.IdleAdd(stopGTKLoading)
+	}()
+
+	return false
+}
+
+func saveAction() {
+	log.Println("Saving current image on disk")
+	fileChooserDialog, err := gtk.FileChooserDialogNewWith2Buttons("Save result", appWindow, gtk.FILE_CHOOSER_ACTION_SAVE, "Save", gtk.RESPONSE_ACCEPT, "Cancel", gtk.RESPONSE_CANCEL)
+	if err != nil {
+		panic(err)
+	}
+	fileChooserDialog.SetDoOverwriteConfirmation(true)
+	fileChooserDialog.SetCurrentFolder("results")
+	fileChooserDialog.SetCurrentName(fmt.Sprintf("res-%d.png", time.Now().Unix()))
+	if fileChooserDialog.Run() == gtk.RESPONSE_ACCEPT {
+		filename := fileChooserDialog.GetFilename()
+		log.Printf("Saving file under %s", filename)
+		file, err := os.Create(filename)
+		if err != nil {
+			log.Printf("Error opening result file: %v", err)
+			return
+		}
+		if err := png.Encode(file, goImg); err != nil {
+			log.Printf("Error writing result file: %v", err)
+		}
+	}
+	fileChooserDialog.Close()
+}
+
 // Callback signal from Gtk Application
 func onGTKActivate(application *gtk.Application) {
 	// Create ApplicationWindow
-	appWindow, err := gtk.ApplicationWindowNew(application)
+	var err error
+	appWindow, err = gtk.ApplicationWindowNew(application)
 	if err != nil {
 		log.Fatalf("Could not create application window: %s", err)
 	}
@@ -142,8 +194,7 @@ func onGTKActivate(application *gtk.Application) {
 	evBox.Add(gtkImg)
 	evBox.Connect("button_press_event", func(w *gtk.EventBox, ev *gdk.Event) bool {
 		eventMotion := gdk.EventMotionNewFromEvent(ev)
-		x, y := eventMotion.MotionVal()
-		log.Printf("Clicked on %v %v\n", x, y)
+		zoomInAction(eventMotion.MotionVal())
 		return false
 	})
 	box.PackStart(evBox, true, true, 0)
@@ -174,19 +225,18 @@ func onGTKActivate(application *gtk.Application) {
 		panic(err)
 	}
 	saveBtn.Connect("clicked", func() {
-		log.Println("Saving current image on disk")
+		saveAction()
 	})
 	actionBar.PackEnd(saveBtn)
 
-	genBtn, err := gtk.ButtonNewWithLabel("Generate")
+	resetBtn, err := gtk.ButtonNewWithLabel("Reset")
 	if err != nil {
 		panic(err)
 	}
-	genBtn.Connect("clicked", func() {
-		log.Println("Generating image")
-		GTKGenerateBtnAction()
+	resetBtn.Connect("clicked", func() {
+		resetAction()
 	})
-	actionBar.PackEnd(genBtn)
+	actionBar.PackEnd(resetBtn)
 
 	appWindow.Add(box)
 
