@@ -158,6 +158,26 @@ func zoomInAction(x, y float64) bool {
 	return false
 }
 
+func zoomOutAction(x, y float64) bool {
+	startGTKLoading()
+	vx := (x/float64(width))*virt_w + virt_x0
+	vy := (y/float64(height))*virt_h + virt_y0
+	log.Printf("Clicked on (%f, %f)", vx, vy)
+
+	virt_x0 = vx - virt_w/(2.0/zoom_factor)
+	virt_y0 = vy - virt_h/(2.0/zoom_factor)
+	virt_w *= zoom_factor
+	virt_h *= zoom_factor
+
+	go func() {
+		plot()
+		saveGoImgToGTK()
+		glib.IdleAdd(stopGTKLoading)
+	}()
+
+	return false
+}
+
 func saveAction() {
 	log.Println("Saving current image on disk")
 	fileChooserDialog, err := gtk.FileChooserDialogNewWith2Buttons("Save result", appWindow, gtk.FILE_CHOOSER_ACTION_SAVE, "Save", gtk.RESPONSE_ACCEPT, "Cancel", gtk.RESPONSE_CANCEL)
@@ -209,8 +229,13 @@ func onGTKActivate(application *gtk.Application) {
 	}
 	evBox.Add(gtkImg)
 	evBox.Connect("button_press_event", func(w *gtk.EventBox, ev *gdk.Event) bool {
-		eventMotion := gdk.EventMotionNewFromEvent(ev)
-		zoomInAction(eventMotion.MotionVal())
+		eventMotion := gdk.EventButtonNewFromEvent(ev)
+		if eventMotion.Button() == gdk.BUTTON_PRIMARY {
+			zoomInAction(eventMotion.MotionVal())
+		}
+		if eventMotion.Button() == gdk.BUTTON_SECONDARY {
+			zoomOutAction(eventMotion.MotionVal())
+		}
 		return false
 	})
 	box.PackStart(evBox, true, true, 0)
