@@ -3,21 +3,19 @@ package main
 import (
 	"fmt"
 	"image"
-	"image/color"
 	"image/png"
 	"log"
-	"math"
-	"math/cmplx"
 	"os"
 	"time"
 
 	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
+
+	"github.com/Salicorne/mandelgo/mandelgo"
 )
 
 const (
-	max_iter    = 300
 	zoom_factor = 3.
 )
 
@@ -35,42 +33,14 @@ var (
 	gtkProgressbar *gtk.ProgressBar
 	goImg          *image.RGBA
 	progress       int
-
-	pallet []mColor = []mColor{
-		mColor{R: 0, G: 0, B: 0},
-		mColor{R: 255, G: 0, B: 0},
-		mColor{R: 255, G: 255, B: 0},
-		mColor{R: 0, G: 255, B: 0},
-		mColor{R: 0, G: 255, B: 255},
-		mColor{R: 0, G: 0, B: 255},
-		mColor{R: 255, G: 0, B: 255},
-		mColor{R: 255, G: 255, B: 255},
-	}
 )
-
-type mColor struct {
-	R uint8
-	G uint8
-	B uint8
-}
-
-func mandelbrot(x float64, y float64) int {
-	z := complex(0, 0)
-	for iter := 0; iter < max_iter; iter++ {
-		z = z*z + complex(x, y)
-		if cmplx.Abs(z) > 2 {
-			return iter
-		}
-	}
-	return max_iter
-}
 
 func plot() {
 	for y := 0; y != height; y++ {
 		for x := 0; x < width; x++ {
 			var vx float64 = (float64(x)/float64(width))*virt_w + virt_x0
 			var vy float64 = (float64(y)/float64(height))*virt_h + virt_y0
-			goImg.Set(x, y, iterToColor(mandelbrot(vx, vy)))
+			goImg.Set(x, y, mandelgo.GetColor(vx, vy))
 		}
 		glib.IdleAdd(func() { gtkProgressbar.SetFraction(float64(y) / float64(height)) })
 	}
@@ -118,29 +88,6 @@ func clamp(v int, min, max uint8) uint8 {
 		return max
 	}
 	return uint8(v)
-}
-
-func interp(a uint8, b uint8, t float64) uint8 {
-	return uint8((1.0-t)*float64(a) + t*float64(b))
-}
-
-func iterToColor(iter int) color.Color {
-	if iter == max_iter {
-		return color.Black
-	}
-	coeff := float64(iter) / float64(max_iter)
-	//coeff = math.Sqrt(coeff)
-	wcoeff := coeff * float64(len(pallet)-1)
-	idx := int(math.Floor(wcoeff))
-
-	c1 := pallet[idx]
-	c2 := pallet[idx+1]
-	return color.RGBA{
-		R: interp(c1.R, c2.R, wcoeff-float64(idx)),
-		G: interp(c1.G, c2.G, wcoeff-float64(idx)),
-		B: interp(c1.B, c2.B, wcoeff-float64(idx)),
-		A: 255,
-	}
 }
 
 func startGTKLoading() bool {
